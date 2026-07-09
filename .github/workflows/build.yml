@@ -76,8 +76,13 @@ jobs:
 
           openssl req -x509 -newkey rsa:2048 -keyout "$RUNNER_TEMP/key.pem" -out "$RUNNER_TEMP/cert.pem" \
             -days 3650 -nodes -config "$RUNNER_TEMP/cert.conf"
+          # OpenSSL 3.x exporta el .p12 con cifrado/MAC modernos (AES+SHA-256)
+          # que el "security import" de Apple no sabe leer ("MAC verification
+          # failed"). Forzamos el formato legacy (3DES+SHA-1) compatible con
+          # el Keychain de macOS.
           openssl pkcs12 -export -out "$RUNNER_TEMP/cert.p12" \
-            -inkey "$RUNNER_TEMP/key.pem" -in "$RUNNER_TEMP/cert.pem" -password "pass:$KEYCHAIN_PASSWORD"
+            -inkey "$RUNNER_TEMP/key.pem" -in "$RUNNER_TEMP/cert.pem" -password "pass:$KEYCHAIN_PASSWORD" \
+            -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg SHA1
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
