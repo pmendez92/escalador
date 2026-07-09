@@ -52,13 +52,16 @@ mac:
   target:
     - target: dmg
       arch: [x64, arm64]
-  # identity: null desactiva el intento de firma "real" de electron-builder
-  # (que requeriría un certificado de pago). La firma ad-hoc gratuita se
-  # aplica aparte, en el hook afterSign (ver scripts/adhoc-sign-mac.js):
-  # sin ninguna firma, macOS con Apple Silicon (M1/M2/M3) se niega
-  # directamente a abrir la app ("está dañada"), sin ofrecer siquiera el
-  # botón "Abrir de todas formas".
-  identity: null
+  # identity: "-" (guion literal) = firma AD-HOC gratuita, sin certificado
+  # de pago. A diferencia de identity: null (que SALTA la firma por
+  # completo), "-" hace que electron-builder firme de verdad la app y,
+  # crucialmente, TODOS sus componentes anidados (Electron Framework,
+  # procesos "Helper", Login Items…) en el orden correcto de dependencias.
+  # Un `codesign --deep` manual aplicado desde fuera, a posteriori, NO
+  # respeta ese orden y deja firmas anidadas inválidas → macOS lo marca
+  # como "app dañada". Sin ninguna firma válida, además, Apple Silicon
+  # (M1-M5) se niega directamente a abrir la app.
+  identity: '-'
   gatekeeperAssess: false
   # Permisos necesarios para leer/escribir archivos seleccionados por el usuario
   extendInfo:
@@ -80,8 +83,6 @@ linux:
 
 appImage:
   artifactName: ${name}-${version}.${ext}
-
-afterSign: scripts/adhoc-sign-mac.js
 
 npmRebuild: true
 
