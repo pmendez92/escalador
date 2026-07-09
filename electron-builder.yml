@@ -52,16 +52,20 @@ mac:
   target:
     - target: dmg
       arch: [x64, arm64]
-  # identity: "-" (guion literal) = firma AD-HOC gratuita, sin certificado
-  # de pago. A diferencia de identity: null (que SALTA la firma por
-  # completo), "-" hace que electron-builder firme de verdad la app y,
-  # crucialmente, TODOS sus componentes anidados (Electron Framework,
-  # procesos "Helper", Login Items…) en el orden correcto de dependencias.
-  # Un `codesign --deep` manual aplicado desde fuera, a posteriori, NO
-  # respeta ese orden y deja firmas anidadas inválidas → macOS lo marca
-  # como "app dañada". Sin ninguna firma válida, además, Apple Silicon
-  # (M1-M5) se niega directamente a abrir la app.
-  identity: '-'
+  # Sin campo "identity": electron-builder autodescubre el certificado a
+  # usar en el llavero (CSC_IDENTITY_AUTO_DISCOVERY, activado por defecto),
+  # acotado por la variable de entorno CSC_NAME. El workflow de CI genera
+  # un certificado autofirmado efímero (gratuito, sin cuenta de Apple
+  # Developer) e importado al llavero del runner antes de este paso — ver
+  # ".github/workflows/build.yml", paso "Certificado de firma ad-hoc".
+  # Con un certificado real (aunque autofirmado) en el llavero,
+  # electron-builder SÍ ejecuta su pipeline de firma completo sobre todos
+  # los componentes anidados (Electron Framework, procesos Helper…) en el
+  # orden correcto — algo que ni identity: null (salta la firma) ni
+  # identity: "-" (electron-builder la busca como nombre de certificado y,
+  # al no existir, también la salta) ni un `codesign --deep` manual a
+  # posteriori consiguen. Sin ninguna firma válida, Apple Silicon (M1-M5)
+  # se niega directamente a abrir la app ("está dañada").
   gatekeeperAssess: false
   # Permisos necesarios para leer/escribir archivos seleccionados por el usuario
   extendInfo:

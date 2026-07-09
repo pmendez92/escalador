@@ -43,6 +43,51 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      - name: Certificado de firma ad-hoc (solo macOS, gratuito)
+        # macOS con Apple Silicon (M1-M5) exige que todo binario tenga una
+        # firma de código válida para poder ejecutarse; sin cuenta de Apple
+        # Developer no se puede usar un certificado "Developer ID
+        # Application" real. Aquí se genera un certificado autofirmado
+        # efímero (gratis, sin registro) y se importa a un llavero temporal
+        # del runner: con un certificado real en el llavero, electron-builder
+        # sí ejecuta su pipeline de firma completo sobre la app y todos sus
+        # componentes anidados (Electron Framework, procesos Helper…) en el
+        # orden correcto. El resultado no está notarizado por Apple, así que
+        # Gatekeeper seguirá mostrando el aviso de "desarrollador no
+        # identificado" (saltable con clic derecho → Abrir), pero ya NO dirá
+        # que la app está dañada.
+        if: runner.os == 'macOS'
+        run: |
+          CERT_CN="Escalador Ad-hoc Signing"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          cat > "$RUNNER_TEMP/cert.conf" <<CFG
+          [req]
+          distinguished_name = dn
+          x509_extensions = ext
+          prompt = no
+          [dn]
+          CN = $CERT_CN
+          [ext]
+          keyUsage = critical, digitalSignature
+          extendedKeyUsage = critical, codeSigning
+          CFG
+
+          openssl req -x509 -newkey rsa:2048 -keyout "$RUNNER_TEMP/key.pem" -out "$RUNNER_TEMP/cert.pem" \
+            -days 3650 -nodes -config "$RUNNER_TEMP/cert.conf"
+          openssl pkcs12 -export -out "$RUNNER_TEMP/cert.p12" \
+            -inkey "$RUNNER_TEMP/key.pem" -in "$RUNNER_TEMP/cert.pem" -password "pass:$KEYCHAIN_PASSWORD"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$KEYCHAIN_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "CSC_NAME=$CERT_CN" >> "$GITHUB_ENV"
+
       - name: Compilar y empaquetar
         # En un push de tag (v1.0.0) se publica un GitHub Release con los
         # instaladores adjuntos; en ejecución manual solo se empaquetan
