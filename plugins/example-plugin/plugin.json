@@ -1,0 +1,6 @@
+{
+  "id": "example-plugin",
+  "name": "Plugin de ejemplo",
+  "version": "1.0.0",
+  "main": "index.js"
+}

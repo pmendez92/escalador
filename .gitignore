@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+.env
+.venv/
+__pycache__/
+resources/icon.png
+resources/icon@2x.png

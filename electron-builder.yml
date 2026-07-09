@@ -1,0 +1,78 @@
+# ============================================================================
+# Configuración de electron-builder — genera instaladores nativos.
+#   Windows: NSIS (.exe)   |   macOS: .dmg   |   Linux: .AppImage
+#
+# `asarUnpack` extrae los binarios nativos (ffmpeg, sharp…) fuera del asar
+# para que puedan ejecutarse como procesos externos.
+# `publish` apunta a GitHub Releases: electron-updater lo usa para el
+# auto-update (sube los artefactos con `electron-builder --publish always`).
+# ============================================================================
+appId: com.pedromendez.escalador
+productName: Escalador
+copyright: Copyright © 2026 Pedro Méndez
+
+directories:
+  buildResources: resources
+  output: dist
+
+files:
+  - out/**
+  - resources/icon.png
+  - python/**
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!scripts/*'
+  - '!{.eslintrc,.gitignore,electron.vite.config.ts,electron-builder.yml}'
+
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+  - node_modules/ffprobe-static/**
+  - node_modules/sharp/**
+  - node_modules/@img/**
+  - resources/**
+
+win:
+  executableName: Escalador
+  icon: resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+
+mac:
+  icon: resources/icon.png
+  category: public.app-category.video
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  # Permisos necesarios para leer/escribir archivos seleccionados por el usuario
+  extendInfo:
+    NSDocumentsFolderUsageDescription: Escalador necesita acceso para convertir tus archivos.
+    NSDownloadsFolderUsageDescription: Escalador guarda las descargas en esta carpeta.
+
+dmg:
+  artifactName: ${name}-${version}.${ext}
+
+linux:
+  icon: resources/icon.png
+  category: AudioVideo
+  target:
+    - target: AppImage
+      arch: [x64]
+
+appImage:
+  artifactName: ${name}-${version}.${ext}
+
+npmRebuild: true
+
+publish:
+  provider: github
+  owner: pedrofat92
+  repo: escalador

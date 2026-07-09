@@ -1,0 +1,11 @@
+# Dependencias opcionales para el escalado PyTorch/CUDA (python/realesrgan_upscale.py).
+# La app funciona sin esto: usa los binarios ncnn-vulkan descargados automáticamente.
+#
+# Para GPU NVIDIA instala primero torch con CUDA:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1
+torchvision>=0.16
+realesrgan>=0.3.0
+basicsr>=1.4.2
+opencv-python>=4.8
+numpy<2

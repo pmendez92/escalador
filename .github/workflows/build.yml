@@ -1,0 +1,62 @@
+# ============================================================================
+# CI de compilación multiplataforma.
+#
+# Genera los tres instaladores en paralelo usando runners nativos de cada
+# sistema operativo (electron-builder no puede compilar el .dmg de macOS
+# desde Windows/Linux: necesita herramientas de Apple).
+#
+# Disparadores:
+#   - Manual: pestaña "Actions" → "Build" → "Run workflow".
+#   - Automático: al subir una etiqueta con formato v1.0.0 (además crea un
+#     GitHub Release borrador con los tres instaladores adjuntos).
+# ============================================================================
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: build:win
+          - os: macos-latest
+            script: build:mac
+          - os: ubuntu-latest
+            script: build:linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar y empaquetar
+        # En un push de tag (v1.0.0) se publica un GitHub Release con los
+        # instaladores adjuntos; en ejecución manual solo se empaquetan
+        # (quedan como artefactos del workflow, nada se publica).
+        run: npm run ${{ matrix.script }} -- --publish ${{ github.event_name == 'push' && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Subir instaladores como artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: escalador-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+          if-no-files-found: ignore
