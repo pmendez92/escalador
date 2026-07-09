@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(npm install --no-audit --no-fund)",
-      "PowerShell(npm run typecheck)",
-      "PowerShell(Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force)"
-    ]
-  }
-}
