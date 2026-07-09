@@ -74,5 +74,5 @@ npmRebuild: true
 
 publish:
   provider: github
-  owner: pedrofat92
+  owner: pmendez92
   repo: escalador
