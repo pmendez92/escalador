@@ -52,12 +52,12 @@ mac:
   target:
     - target: dmg
       arch: [x64, arm64]
-  # Firma "ad-hoc" (identity: null): gratuita, no requiere cuenta de Apple
-  # Developer. Sin ninguna firma, macOS con Apple Silicon (M1/M2/M3) se
-  # niega directamente a abrir la app ("está dañada"), sin ni siquiera
-  # ofrecer el botón "Abrir de todas formas". Con firma ad-hoc, el sistema
-  # sí arranca la app y solo queda el aviso normal de Gatekeeper (que se
-  # salta con clic derecho → Abrir, sin coste alguno).
+  # identity: null desactiva el intento de firma "real" de electron-builder
+  # (que requeriría un certificado de pago). La firma ad-hoc gratuita se
+  # aplica aparte, en el hook afterSign (ver scripts/adhoc-sign-mac.js):
+  # sin ninguna firma, macOS con Apple Silicon (M1/M2/M3) se niega
+  # directamente a abrir la app ("está dañada"), sin ofrecer siquiera el
+  # botón "Abrir de todas formas".
   identity: null
   gatekeeperAssess: false
   # Permisos necesarios para leer/escribir archivos seleccionados por el usuario
@@ -80,6 +80,8 @@ linux:
 
 appImage:
   artifactName: ${name}-${version}.${ext}
+
+afterSign: scripts/adhoc-sign-mac.js
 
 npmRebuild: true
 
