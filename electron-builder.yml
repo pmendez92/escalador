@@ -58,7 +58,10 @@ mac:
     NSDownloadsFolderUsageDescription: Escalador guarda las descargas en esta carpeta.
 
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  # ${arch} es obligatorio aquí: al compilar x64 y arm64 en paralelo, si
+  # ambos comparten nombre de archivo, los dos "hdiutil convert" escriben
+  # al mismo .dmg simultáneamente y el proceso falla ("resource busy").
+  artifactName: ${name}-${version}-${arch}.${ext}
 
 linux:
   icon: resources/icon.png
