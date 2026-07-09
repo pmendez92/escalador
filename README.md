@@ -154,6 +154,24 @@ ESCALADOR/
 
 > **macOS**: para distribuir fuera de tu máquina necesitas firmar/notarizar la app (variables `CSC_LINK`/`CSC_KEY_PASSWORD` + notarización). Sin firma, la app funciona localmente con clic derecho → Abrir.
 
+### Instalar el .dmg sin firmar en macOS
+
+El `.dmg` generado por CI no está firmado con un certificado de Apple Developer (99 $/año) ni notarizado, así que Gatekeeper lo bloquea con *"Apple no ha podido verificar que no contiene malware"*. Cada persona que lo instale debe hacer **una sola vez**:
+
+**A) Desde Ajustes del Sistema (sin Terminal):**
+1. Intentar abrir la app (doble clic) → aparece el aviso de bloqueo.
+2. **Ajustes del Sistema → Privacidad y seguridad** → bajar hasta "Seguridad".
+3. Pulsar **Abrir de todas formas** junto al mensaje sobre Escalador, confirmar con contraseña/Touch ID.
+4. Volver a abrir la app (doble clic) → ahora aparece un diálogo con botón **Abrir**.
+
+**B) Con Terminal (un solo comando, más fiable):**
+```bash
+xattr -cr /Applications/Escalador.app
+```
+Elimina el atributo de cuarentena que macOS añade a los archivos descargados de internet; tras esto abre sin avisos.
+
+Para eliminar este paso por completo hace falta firmar y notarizar el build (cuenta de Apple Developer + `CSC_LINK`/`CSC_KEY_PASSWORD` como secrets del repo, y el hook `afterSign` de electron-builder con `@electron/notarize` en el workflow de CI).
+
 ---
 
 ## 🧩 Crear un plugin
