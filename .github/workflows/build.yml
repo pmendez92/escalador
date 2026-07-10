@@ -91,6 +91,16 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+          # Un certificado autofirmado no es de confianza para macOS
+          # (CSSMERR_TP_NOT_TRUSTED), por lo que codesign lo considera
+          # inválido y electron-builder se salta la firma. Registrarlo como
+          # raíz de confianza en el llavero del sistema lo convierte en una
+          # identidad de firma válida (sudo es sin contraseña en runners).
+          sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$RUNNER_TEMP/cert.pem"
+
+          # Verificación: debe listar 1 identidad VÁLIDA antes de compilar.
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
           echo "CSC_NAME=$CERT_CN" >> "$GITHUB_ENV"
 
       - name: Compilar y empaquetar
