@@ -51,12 +51,37 @@ export class ImageUpscaleExecutor implements JobExecutor {
       // 2. Planificar pasadas: cada pasada usa la escala nativa del modelo.
       const passes = this.planPasses(options.scale, model.scales)
       let current = input
+      let currentScale = 1
 
       for (let i = 0; i < passes.length; i++) {
         throwIfAborted(ctx.signal)
+        const pass = passes[i]
+
+        // Si la siguiente pasada haría superar la escala objetivo (p. ej.
+        // 8x con modelo ×4: la 2ª pasada llevaría la intermedia de ×4 a
+        // ×16), se reduce ANTES con Lanczos hasta la escala justa. Sin
+        // esto, un 8x de una foto de 12 MP intentaría generar una imagen
+        // de 3 gigapíxeles que agota la RAM aunque la GPU use teselas.
+        const neededBefore = options.scale / pass
+        if (currentScale > neededBefore && neededBefore >= 1) {
+          ctx.reportProgress({
+            percent: (i / passes.length) * 90,
+            phase: 'Reduciendo imagen intermedia'
+          })
+          const reduced = path.join(tempDir, `reduced-${i}.png`)
+          const reducedWidth = Math.round((srcMeta.width ?? 0) * neededBefore)
+          await sharp(current, { limitInputPixels: false })
+            .resize({ width: reducedWidth, kernel: 'lanczos3' })
+            .png()
+            .toFile(reduced)
+          current = reduced
+          currentScale = neededBefore
+        }
+
         const passOut = path.join(tempDir, `pass-${i}.png`)
-        await this.runPassResilient(exe, modelsDir, model.id, current, passOut, passes[i], ctx, i, passes.length)
+        await this.runPassResilient(exe, modelsDir, model.id, current, passOut, pass, ctx, i, passes.length)
         current = passOut
+        currentScale *= pass
       }
 
       // 3. Ajuste final: si la escala pedida no coincide con el producto de
@@ -64,8 +89,11 @@ export class ImageUpscaleExecutor implements JobExecutor {
       ctx.reportProgress({ percent: 88, phase: 'Ajuste final' })
       const targetWidth = Math.round((srcMeta.width ?? 0) * options.scale)
       const targetHeight = Math.round((srcMeta.height ?? 0) * options.scale)
-      let result = sharp(current)
-      const curMeta = await sharp(current).metadata()
+      // limitInputPixels: false — un resultado ×8 supera con facilidad el
+      // tope de seguridad de sharp (268 MP) y sin esta opción lanzaría
+      // "Input image exceeds pixel limit".
+      let result = sharp(current, { limitInputPixels: false })
+      const curMeta = await sharp(current, { limitInputPixels: false }).metadata()
       if (targetWidth > 0 && curMeta.width !== targetWidth) {
         result = result.resize({ width: targetWidth, kernel: 'lanczos3' })
       }
@@ -87,11 +115,14 @@ export class ImageUpscaleExecutor implements JobExecutor {
           .ensureAlpha(texture / 100)
           .png()
           .toBuffer()
-        buffer = await sharp(buffer).composite([{ input: grain }]).png().toBuffer()
+        buffer = await sharp(buffer, { limitInputPixels: false })
+          .composite([{ input: grain }])
+          .png()
+          .toBuffer()
       }
 
       // Mantener DPI original (metadata density → PPP).
-      let out = sharp(buffer)
+      let out = sharp(buffer, { limitInputPixels: false })
       if (srcMeta.density) {
         out = out.withMetadata({ density: srcMeta.density })
       }
