@@ -55,7 +55,7 @@ export class ImageUpscaleExecutor implements JobExecutor {
       for (let i = 0; i < passes.length; i++) {
         throwIfAborted(ctx.signal)
         const passOut = path.join(tempDir, `pass-${i}.png`)
-        await this.runRealesrgan(exe, modelsDir, model.id, current, passOut, passes[i], ctx, i, passes.length)
+        await this.runPassResilient(exe, modelsDir, model.id, current, passOut, passes[i], ctx, i, passes.length)
         current = passOut
       }
 
@@ -119,7 +119,19 @@ export class ImageUpscaleExecutor implements JobExecutor {
     return [best, best] // ×16 → se reduce a ×8 al final
   }
 
-  private runRealesrgan(
+  /**
+   * Ejecuta una pasada de Real-ESRGAN con reintentos automáticos.
+   *
+   * El binario ncnn-vulkan crashea con violación de acceso (código
+   * 3221225477 / 0xC0000005 en Windows) cuando la GPU se queda sin VRAM —
+   * habitual en 8x, donde la segunda pasada procesa una imagen ya 4 veces
+   * más grande. El parámetro -t (tile) trocea la imagen en teselas y acota
+   * el pico de memoria a costa de algo de velocidad.
+   *
+   * Escalera: modo normal → teselas 256 → 128 → 64 → CPU (último recurso).
+   * Cada reintento se registra en el log y se refleja en la fase de la UI.
+   */
+  private async runPassResilient(
     exe: string,
     modelsDir: string,
     modelId: string,
@@ -131,6 +143,56 @@ export class ImageUpscaleExecutor implements JobExecutor {
     passCount: number
   ): Promise<void> {
     const useGpu = ctx.services.settings.get().useGpu
+    const attempts: Array<{ tileSize?: number; forceCpu?: boolean }> = [
+      {},
+      { tileSize: 256 },
+      { tileSize: 128 },
+      { tileSize: 64 }
+    ]
+    // Si la GPU está activada, añadir CPU como último recurso absoluto.
+    if (useGpu) attempts.push({ forceCpu: true, tileSize: 128 })
+
+    let lastError: Error | null = null
+    for (let i = 0; i < attempts.length; i++) {
+      throwIfAborted(ctx.signal)
+      const attempt = attempts[i]
+      if (i > 0) {
+        const detail = attempt.forceCpu
+          ? 'reintentando con CPU'
+          : `reintentando con teselas de ${attempt.tileSize}px (menos VRAM)`
+        ctx.services.logger.warn(
+          'realesrgan',
+          `Pasada ${passIndex + 1} falló (${lastError?.message}); ${detail}`
+        )
+        ctx.reportProgress({
+          percent: (passIndex / passCount) * 90,
+          phase: `IA — ${detail}`
+        })
+      }
+      try {
+        await this.runRealesrgan(exe, modelsDir, modelId, input, output, scale, ctx, passIndex, passCount, attempt)
+        return
+      } catch (err) {
+        if (err instanceof CancelledError) throw err
+        lastError = err instanceof Error ? err : new Error(String(err))
+      }
+    }
+    throw lastError ?? new Error('Real-ESRGAN falló sin detalle')
+  }
+
+  private runRealesrgan(
+    exe: string,
+    modelsDir: string,
+    modelId: string,
+    input: string,
+    output: string,
+    scale: number,
+    ctx: ExecutionContext,
+    passIndex: number,
+    passCount: number,
+    opts: { tileSize?: number; forceCpu?: boolean } = {}
+  ): Promise<void> {
+    const useGpu = ctx.services.settings.get().useGpu && !opts.forceCpu
     const args = [
       '-i', input,
       '-o', output,
@@ -139,6 +201,8 @@ export class ImageUpscaleExecutor implements JobExecutor {
       '-m', modelsDir,
       '-f', 'png'
     ]
+    // -t: tamaño de tesela; acota el uso de VRAM en imágenes grandes.
+    if (opts.tileSize) args.push('-t', String(opts.tileSize))
     // -g -1 = CPU; por defecto autodetecta la GPU Vulkan (CUDA en NVIDIA).
     if (!useGpu) args.push('-g', '-1')
 
@@ -173,7 +237,15 @@ export class ImageUpscaleExecutor implements JobExecutor {
         ctx.signal.removeEventListener('abort', onAbort)
         if (ctx.signal.aborted) reject(new CancelledError())
         else if (code === 0) resolve()
-        else reject(new Error(`Real-ESRGAN terminó con código ${code}: ${stderrTail.trim().split('\n').pop()}`))
+        else {
+          // 3221225477 = 0xC0000005 (violación de acceso): casi siempre
+          // significa que la GPU agotó su VRAM con la imagen completa.
+          const reason =
+            code === 3221225477
+              ? 'memoria de GPU agotada'
+              : stderrTail.trim().split('\n').pop() || 'sin detalle'
+          reject(new Error(`Real-ESRGAN terminó con código ${code}: ${reason}`))
+        }
       })
     })
   }
